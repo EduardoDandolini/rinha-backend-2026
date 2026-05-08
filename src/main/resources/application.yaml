@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: rinha-backend-2026
+  threads:
+    virtual:
+      enabled: true
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+
+server:
+  port: 8080

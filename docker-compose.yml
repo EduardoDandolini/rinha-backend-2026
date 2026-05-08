@@ -1,0 +1,55 @@
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-1
+      - api-2
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "10MB"
+
+  api-1:
+    build: .
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "165MB"
+
+  api-2:
+    build: .
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "165MB"
+
+  k6:
+    image: grafana/k6:latest
+    profiles: ["test"]
+    working_dir: /scripts
+    volumes:
+      - ./k6:/scripts
+    depends_on:
+      - nginx
+    environment:
+      - BASE_URL=nginx:9999
+    entrypoint: ["sh", "-c", "until wget -qO- http://nginx:9999/ready 2>/dev/null; do echo 'Aguardando API...'; sleep 2; done && k6 run /scripts/test.js"]
+
+  k6-smoke:
+    image: grafana/k6:latest
+    profiles: ["smoke"]
+    working_dir: /scripts
+    volumes:
+      - ./k6:/scripts
+    depends_on:
+      - nginx
+    environment:
+      - BASE_URL=nginx:9999
+    entrypoint: ["sh", "-c", "until wget -qO- http://nginx:9999/ready 2>/dev/null; do echo 'Aguardando API...'; sleep 2; done && k6 run /scripts/smoke.js"]
