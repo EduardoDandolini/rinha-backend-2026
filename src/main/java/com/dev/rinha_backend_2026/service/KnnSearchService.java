@@ -14,14 +14,22 @@ public class KnnSearchService {
     private boolean[] isFraud;
     private int size;
 
+    private HnswIndex hnsw;
+
     public void init(byte[] vectors, boolean[] isFraud, int size) {
         this.vectors = vectors;
         this.isFraud = isFraud;
         this.size = size;
     }
 
+    public void setHnsw(HnswIndex hnsw) {
+        this.hnsw = hnsw;
+    }
+
+    public HnswIndex getHnsw() { return hnsw; }
+
     public boolean isReady() {
-        return vectors != null;
+        return hnsw != null;
     }
 
     public byte[] getVectors() { return vectors; }

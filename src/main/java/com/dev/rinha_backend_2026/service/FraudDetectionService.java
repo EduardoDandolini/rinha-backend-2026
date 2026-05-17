@@ -19,12 +19,7 @@ public class FraudDetectionService {
     public FraudResponse evaluate(TransactionRequest request) {
         float[] floatVec = vectorizationService.vectorize(request);
         byte[] queryVec = KnnSearchService.quantizeVector(floatVec);
-        KnnSearchService.FraudResult result = KnnSearchService.evaluate(
-                queryVec,
-                knnSearchService.getVectors(),
-                knnSearchService.getIsFraud(),
-                knnSearchService.getSize()
-        );
+        KnnSearchService.FraudResult result = knnSearchService.getHnsw().search(queryVec);
         return new FraudResponse(result.approved(), result.fraudScore());
     }
 }

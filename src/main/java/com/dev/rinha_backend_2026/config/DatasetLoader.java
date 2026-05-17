@@ -80,10 +80,28 @@ public class DatasetLoader {
                 }
             }
 
+            int fraudInDataset = 0;
+            for (int i = 0; i < count; i++) { if (isFraud[i]) fraudInDataset++; }
+            log.info("Dataset loaded: {} vectors ({} fraud, {} legit) in {}ms — building HNSW index (M={}, efC={})...",
+                    count, fraudInDataset, count - fraudInDataset,
+                    System.currentTimeMillis() - start,
+                    com.dev.rinha_backend_2026.service.HnswIndex.M,
+                    com.dev.rinha_backend_2026.service.HnswIndex.EF_CONSTRUCTION);
             knnSearchService.init(vectors, isFraud, count);
+
+            long buildStart = System.currentTimeMillis();
+            com.dev.rinha_backend_2026.service.HnswIndex hnsw =
+                    new com.dev.rinha_backend_2026.service.HnswIndex(vectors, isFraud, count);
+            for (int i = 0; i < count; i++) {
+                hnsw.insert(i);
+                if (i > 0 && i % 500_000 == 0) {
+                    log.info("  HNSW: {} / {} nodes indexed", i, count);
+                }
+            }
+            knnSearchService.setHnsw(hnsw);
             ready.set(true);
 
-            log.info("Dataset ready: {} vectors in {}ms", count, System.currentTimeMillis() - start);
+            log.info("HNSW ready: {} nodes in {}ms", count, System.currentTimeMillis() - buildStart);
 
         } catch (Exception e) {
             log.error("Failed to load dataset", e);
