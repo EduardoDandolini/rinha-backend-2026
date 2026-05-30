@@ -1,12 +1,16 @@
 spring:
   application:
     name: rinha-backend-2026
-  threads:
-    virtual:
-      enabled: true
   jackson:
     deserialization:
       fail-on-unknown-properties: false
 
 server:
   port: 8080
+  tomcat:
+    threads:
+      max: 4
+      min-spare: 2
+    accept-count: 512
+    max-connections: 2048
+    connection-timeout: 3000

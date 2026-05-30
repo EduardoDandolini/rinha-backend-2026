@@ -10,7 +10,6 @@ public class NativeHints implements RuntimeHintsRegistrar {
 
     @Override
     public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
-        hints.resources().registerPattern("references.json.gz");
         hints.resources().registerPattern("normalization.json");
         hints.resources().registerPattern("mcc_risk.json");
 

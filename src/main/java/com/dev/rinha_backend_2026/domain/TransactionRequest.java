@@ -2,8 +2,6 @@ package com.dev.rinha_backend_2026.domain;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.List;
-
 public record TransactionRequest(
         String id,
         Transaction transaction,
@@ -22,7 +20,7 @@ public record TransactionRequest(
     public record Customer(
             @JsonProperty("avg_amount") double avgAmount,
             @JsonProperty("tx_count_24h") int txCount24h,
-            @JsonProperty("known_merchants") List<String> knownMerchants
+            @JsonProperty("known_merchants") String[] knownMerchants
     ) {}
 
     public record Merchant(

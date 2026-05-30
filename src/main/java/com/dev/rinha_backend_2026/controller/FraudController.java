@@ -1,4 +1,4 @@
-package com.dev.rinha_backend_2026.web;
+package com.dev.rinha_backend_2026.controller;
 
 import com.dev.rinha_backend_2026.config.DatasetLoader;
 import com.dev.rinha_backend_2026.domain.FraudResponse;

@@ -1,32 +1,28 @@
 package com.dev.rinha_backend_2026.config;
 
 import com.dev.rinha_backend_2026.service.KnnSearchService;
-import tools.jackson.core.JsonParser;
-import tools.jackson.core.JsonToken;
-import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import java.io.InputStream;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.zip.GZIPInputStream;
 
 @Component
 public class DatasetLoader {
 
     private static final Logger log = LoggerFactory.getLogger(DatasetLoader.class);
-    private static final int INITIAL_CAPACITY = 3_000_000;
+    private static final String BIN_PATH = "/app/refs.bin";
 
     private final KnnSearchService knnSearchService;
-    private final ObjectMapper objectMapper;
-    private final AtomicBoolean ready = new AtomicBoolean(false);
+    private final AtomicBoolean    ready = new AtomicBoolean(false);
 
-    public DatasetLoader(KnnSearchService knnSearchService, ObjectMapper objectMapper) {
+    public DatasetLoader(KnnSearchService knnSearchService) {
         this.knnSearchService = knnSearchService;
-        this.objectMapper = objectMapper;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -36,79 +32,78 @@ public class DatasetLoader {
 
     private void load() {
         try {
-            log.info("Loading dataset from classpath:references.json.gz ...");
-            long start = System.currentTimeMillis();
-
-            byte[] vectors = new byte[INITIAL_CAPACITY * KnnSearchService.DIM];
-            boolean[] isFraud = new boolean[INITIAL_CAPACITY];
-            int count = 0;
-
-            try (InputStream raw = getClass().getResourceAsStream("/references.json.gz");
-                 InputStream in = new GZIPInputStream(raw, 65536);
-                 JsonParser parser = objectMapper.createParser(in)) {
-
-                if (parser.nextToken() != JsonToken.START_ARRAY) {
-                    throw new IllegalStateException("Expected START_ARRAY at root");
-                }
-
-                byte[] vec = new byte[KnnSearchService.DIM];
-
-                while (parser.nextToken() != JsonToken.END_ARRAY) {
-                    boolean fraud = false;
-
-                    while (parser.nextToken() != JsonToken.END_OBJECT) {
-                        String field = parser.currentName();
-                        parser.nextToken();
-
-                        if ("label".equals(field)) {
-                            fraud = "fraud".equals(parser.getString());
-                        } else if ("vector".equals(field)) {
-                            int idx = 0;
-                            while (parser.nextToken() != JsonToken.END_ARRAY) {
-                                vec[idx++] = KnnSearchService.quantize(parser.getFloatValue());
-                            }
-                        }
-                    }
-
-                    System.arraycopy(vec, 0, vectors, count * KnnSearchService.DIM, KnnSearchService.DIM);
-                    isFraud[count] = fraud;
-                    count++;
-
-                    if (count % 500_000 == 0) {
-                        log.info("  ... {} vectors loaded", count);
-                    }
-                }
-            }
-
-            int fraudInDataset = 0;
-            for (int i = 0; i < count; i++) { if (isFraud[i]) fraudInDataset++; }
-            log.info("Dataset loaded: {} vectors ({} fraud, {} legit) in {}ms — building HNSW index (M={}, efC={})...",
-                    count, fraudInDataset, count - fraudInDataset,
-                    System.currentTimeMillis() - start,
-                    com.dev.rinha_backend_2026.service.HnswIndex.M,
-                    com.dev.rinha_backend_2026.service.HnswIndex.EF_CONSTRUCTION);
-            knnSearchService.init(vectors, isFraud, count);
-
-            long buildStart = System.currentTimeMillis();
-            com.dev.rinha_backend_2026.service.HnswIndex hnsw =
-                    new com.dev.rinha_backend_2026.service.HnswIndex(vectors, isFraud, count);
-            for (int i = 0; i < count; i++) {
-                hnsw.insert(i);
-                if (i > 0 && i % 500_000 == 0) {
-                    log.info("  HNSW: {} / {} nodes indexed", i, count);
-                }
-            }
-            knnSearchService.setHnsw(hnsw);
-            ready.set(true);
-
-            log.info("HNSW ready: {} nodes in {}ms", count, System.currentTimeMillis() - buildStart);
-
+            File f = new File(BIN_PATH);
+            if (!f.exists()) throw new FileNotFoundException(BIN_PATH + " not found — rebuild image");
+            loadBinary(f);
         } catch (Exception e) {
             log.error("Failed to load dataset", e);
         }
     }
 
-    public boolean isReady() {
-        return ready.get();
+    private void loadBinary(File f) throws IOException {
+        log.info("Loading {} ({} MB)...", BIN_PATH, f.length() >> 20);
+        long t0 = System.currentTimeMillis();
+
+        try (DataInputStream dis = new DataInputStream(
+                new BufferedInputStream(new FileInputStream(f), 1 << 20))) {
+
+            int magic = dis.readInt();
+            if (magic != 0x52454653)
+                throw new IllegalStateException("Bad magic: 0x" + Integer.toHexString(magic));
+            int version = dis.readInt();
+            if (version != 4)
+                throw new IllegalStateException("Expected v4, got v" + version + " — rebuild image");
+            int n = dis.readInt();
+            int k = dis.readInt();
+            final int DIM = KnnSearchService.DIM;
+
+            short[] centroids = readShorts(dis, k * DIM);
+            short[] bboxMin   = readShorts(dis, k * DIM);
+            short[] bboxMax   = readShorts(dis, k * DIM);
+            int[]   offsets   = readInts(dis, k + 1);
+            short[] rows      = readShorts(dis, n * DIM);
+            byte[]  labels    = new byte[n];
+            dis.readFully(labels);
+            int[]   origIds   = readInts(dis, n);
+
+            knnSearchService.setDataset(centroids, bboxMin, bboxMax, offsets,
+                                        rows, labels, origIds, n, k);
+            ready.set(true);
+        }
+
+        log.info("Index ready: {} refs loaded in {}ms",
+                knnSearchService.getRefCount(), System.currentTimeMillis() - t0);
     }
+
+    private static short[] readShorts(DataInputStream dis, int count) throws IOException {
+        short[] out = new short[count];
+        byte[]  buf = new byte[1 << 20];
+        ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.BIG_ENDIAN);
+        int offset = 0, remaining = count;
+        while (remaining > 0) {
+            int chunk = Math.min(remaining, buf.length / 2);
+            dis.readFully(buf, 0, chunk * 2);
+            bb.clear();
+            bb.asShortBuffer().get(out, offset, chunk);
+            offset += chunk; remaining -= chunk;
+        }
+        return out;
+    }
+
+    private static int[] readInts(DataInputStream dis, int count) throws IOException {
+        int[] out = new int[count];
+        byte[] buf = new byte[1 << 20];
+        ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.BIG_ENDIAN);
+        int offset = 0, remaining = count;
+        while (remaining > 0) {
+            int chunk = Math.min(remaining, buf.length / 4);
+            dis.readFully(buf, 0, chunk * 4);
+            bb.clear();
+            bb.asIntBuffer().get(out, offset, chunk);
+            offset += chunk; remaining -= chunk;
+        }
+        return out;
+    }
+
+    public boolean isReady() { return ready.get(); }
 }

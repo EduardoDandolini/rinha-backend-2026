@@ -53,6 +53,11 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.1.0</version>
+			</plugin>
 		</plugins>
 	</build>
 
@@ -60,6 +65,15 @@
 		<profile>
 			<id>native</id>
 			<build>
+				<!-- Exclude the 48 MB JSON from the native binary — runtime always uses refs.bin -->
+				<resources>
+					<resource>
+						<directory>src/main/resources</directory>
+						<excludes>
+							<exclude>references.json.gz</exclude>
+						</excludes>
+					</resource>
+				</resources>
 				<plugins>
 					<plugin>
 						<groupId>org.springframework.boot</groupId>
@@ -81,6 +95,7 @@
 								<phase>package</phase>
 							</execution>
 						</executions>
+						<configuration/>
 					</plugin>
 				</plugins>
 			</build>
