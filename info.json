@@ -1,0 +1,7 @@
+{
+    "participants": ["Eduardo Dandolini"],
+    "social": ["https://github.com/EduardoDandolini"],
+    "source-code-repo": "https://github.com/EduardoDandolini/rinha-backend-2026",
+    "stack": ["java", "graalvm-native-image", "spring-boot", "nginx"],
+    "open_to_work": false
+}
