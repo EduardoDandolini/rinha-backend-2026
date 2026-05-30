@@ -18,7 +18,7 @@ WORKDIR /app
 COPY pom.xml .
 RUN mvn dependency:go-offline -q
 COPY src ./src
-RUN NATIVE_IMAGE_OPTIONS="-O3 -march=native" mvn -Pnative -DskipTests package
+RUN NATIVE_IMAGE_OPTIONS="-O3 -march=compatibility" mvn -Pnative -DskipTests package
 
 # Stage 3: Runtime
 FROM debian:12-slim
